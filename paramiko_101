@@ -1,0 +1,105 @@
+#!/usr/bin/env python
+
+import threading
+import paramiko
+import yaml
+import os
+import subprocess
+import time
+
+# Open SSHv2 connection to devices
+def open_ssh_conn(ip, actions):
+    try:
+        # Logging into device
+        session = paramiko.SSHClient()
+
+        session.set_missing_host_key_policy(
+            paramiko.AutoAddPolicy())
+
+        session.connect(ip, username=username, password=password)
+
+        connection = session.invoke_shell()
+
+        for each_line in actions:
+            connection.send(each_line + '\n')
+            time.sleep(2)
+
+        # Checking command output for IOS syntax errors
+        output = connection.recv(65535)
+
+        print output
+
+    except paramiko.AuthenticationException:
+        print("* Invalid username or password. \n* "
+              "Please check the username/password file or the device configuration!")
+        print("* Closing program...\n")
+
+
+# Creating threads
+def create_threads(ip_list, actions):
+    threads = []
+    for ip in ip_list:
+        th = threading.Thread(target=open_ssh_conn, args=(ip, actions))  # args is a tuple with a single element
+        th.start()
+        threads.append(th)
+
+    for th in threads:
+        th.join()
+
+# Checking IP address file and content validity
+def ip_is_valid(ip_list):
+    # Checking IP reachability
+    print "\n* Checking IP reachability. Please wait...\n"
+
+    check2 = False
+    while True:
+        for ip in ip_list:
+            ping_reply = subprocess.call(['ping', ip])
+
+            if ping_reply == 0:
+                check2 = True
+                continue
+
+            elif ping_reply == 2:
+                print "\n* No response from device %s." % ip
+                check2 = False
+                break
+
+            else:
+                print "\n* Ping to the following device has FAILED:", ip
+                check2 = False
+                break
+
+        # Evaluating the 'check' flag
+        if not check2:
+            print "* Please re-check IP address list or device.\n"
+            exit()
+
+        elif check2:
+            print '\n* All devices are reachable. Waiting for username/password file...\n'
+            break
+
+# Calling the SSH function
+if __name__ == '__main__':
+
+    yaml_file_path = os.path.join(os.path.dirname(__file__), 'inventory.yaml')
+    raw_data = open(yaml_file_path).read()
+    inventory_vars = yaml.load(raw_data)
+
+    # Checking IP
+    ip_list = [ip for vendor in inventory_vars['hosts'] for ip in inventory_vars['hosts'][vendor]]
+    ip_is_valid(ip_list)
+
+    # prompt for password
+    username = raw_input('username>')
+    password = raw_input('password>')
+
+    # find the vendor to be process
+    for k in inventory_vars['hosts'].keys():
+        # find the action for a given vendor ip list
+        vendor_ip_list = inventory_vars['hosts'].get(k)
+        commands = inventory_vars['action'].get(k)
+        if commands and vendor_ip_list:
+            # for a list of device to vendor send vendor syntax action
+            create_threads(vendor_ip_list, commands)
+
