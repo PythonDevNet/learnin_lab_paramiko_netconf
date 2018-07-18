@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+
+import paramiko
+import time
+import re
+import sys
+
+cmd_list = ('show mac-address table ','show vlans')
+username = "admin"
+password = ""
+
+class inventory():
+    hosts = ('192.168.1.1',)
+
+
+# Open SSHv2 connection to devices
+def open_ssh_conn(ip):
+    try:
+        # prompt for password
+        password = raw_input('password>')
+
+        # Logging into device
+        session = paramiko.SSHClient()
+
+        session.set_missing_host_key_policy(
+            paramiko.AutoAddPolicy())
+
+        session.connect(ip, username=username, password=password)
+
+        connection = session.invoke_shell()
+
+        #Setting terminal length for entire output - disable pagination
+        connection.send("set cli screen-length 0\n")
+        time.sleep(1)
+
+        for each_line in cmd_list:
+            connection.send(each_line + '\n')
+            time.sleep(2)
+
+        #Checking command output for IOS syntax errors
+        output = connection.recv(65535)
+
+        print output
+
+
+    except paramiko.AuthenticationException:
+
+        print("* Invalid username or password. \n* "
+              "Please check the username/password file or the device configuration!")
+        print("* Closing program...\n")
+
+# Calling the SSH function
+if __name__ == '__main__':
+    for ip in inventory.hosts:
+        open_ssh_conn(ip)
+
